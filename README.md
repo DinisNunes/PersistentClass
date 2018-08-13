@@ -1,6 +1,7 @@
 # PersistentClass
 
-The existing report is about using Persistent Class. 
+The code on the existing report file (report.txt) is about using Persistent Class. 
+
 
 Creating a persistent object:
 
