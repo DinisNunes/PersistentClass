@@ -1,0 +1,228 @@
+*&---------------------------------------------------------------------*
+*& Report Z_PERSISTENT_01
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT z_persistent_01.
+
+SELECTION-SCREEN SKIP.
+
+SELECTION-SCREEN BEGIN OF BLOCK block01 WITH FRAME TITLE TEXT-001 NO INTERVALS.
+PARAMETERS: rb_creat RADIOBUTTON GROUP g1 DEFAULT 'X' USER-COMMAND abc,
+            rb_delet RADIOBUTTON GROUP g1,
+            rb_read  RADIOBUTTON GROUP g1,
+            rb_read1 RADIOBUTTON GROUP g1,
+            rb_updat RADIOBUTTON GROUP g1.
+SELECTION-SCREEN END OF BLOCK block01.
+
+SELECTION-SCREEN SKIP 2.
+
+PARAMETERS: p_name       TYPE emnam MODIF ID nam,
+            p_sector(10) TYPE c MODIF ID sec,
+            p_number     TYPE persno MODIF ID num.
+
+DATA: emp    TYPE REF TO zcl_my_persist_01,
+      agent  TYPE REF TO zca_my_persist_01,
+      number TYPE persno,
+      name   TYPE emnam.
+DATA: v_radio TYPE string.
+
+
+INITIALIZATION.
+  v_radio = 'CREATE'.
+
+AT SELECTION-SCREEN OUTPUT.
+  LOOP AT SCREEN.
+*******
+** Radiobutton Create Employee
+*******
+    IF screen-group1 = 'NUM' AND rb_creat = 'X'.
+      screen-active = 0.
+      MODIFY SCREEN.
+    ENDIF.
+
+*******
+** Radiobutton Delete Employee
+*******
+    IF screen-group1 = 'NAM' AND rb_delet = 'X'.
+      screen-active = 0.
+      MODIFY SCREEN.
+
+    ELSEIF screen-group1 = 'SEC' AND rb_delet = 'X'.
+      v_radio = 'DELETE'.
+      screen-active = 0.
+      MODIFY SCREEN.
+
+    ENDIF.
+*******
+** Radiobutton Read All Employee
+*******
+    IF screen-group1 = 'NUM' AND rb_read = 'X'.
+      screen-active = 0.
+      MODIFY SCREEN.
+
+    ELSEIF screen-group1 = 'NAM' AND rb_read = 'X'.
+      screen-active = 0.
+      MODIFY SCREEN.
+
+    ELSEIF screen-group1 = 'SEC' AND rb_read = 'X'.
+      v_radio = 'READ'.
+      screen-active = 0.
+      MODIFY SCREEN.
+    ENDIF.
+*******
+** Radiobutton Read One Employee
+*******
+    IF screen-group1 = 'NAM' AND rb_read1 = 'X'.
+      screen-active = 0.
+      MODIFY SCREEN.
+
+    ELSEIF screen-group1 = 'SEC' AND rb_read1 = 'X'.
+      v_radio = 'READ1'.
+      screen-active = 0.
+      MODIFY SCREEN.
+    ENDIF.
+*******
+** Radiobutton Update Employee
+*******
+    IF screen-group1 = 'SEC' AND rb_updat = 'X'.
+      v_radio = 'UPDATE'.
+      screen-active = 1.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+
+START-OF-SELECTION.
+  agent = zca_my_persist_01=>agent.
+  TRY.
+      CASE v_radio.
+
+*****
+** Create Employee
+*****
+        WHEN 'CREATE'.
+
+          DATA v_max TYPE persno.
+          SELECT MAX( number1 ) FROM zemp_table_01 INTO v_max.
+
+          IF sy-subrc IS INITIAL.
+            v_max = v_max + 1.
+
+            emp = agent->create_persistent(
+            EXPORTING
+              i_number1 = v_max ) .
+
+            emp->set_name( p_name ) .
+            emp->set_sector( p_sector ) .
+
+
+            IF sy-subrc IS INITIAL.
+              WRITE:/ 'Added value successfully with the number, ', v_max.
+            ENDIF.
+
+          ENDIF.
+
+
+*****
+** Read All Employee
+*****
+        WHEN 'READ'.
+          DATA it_table TYPE TABLE OF zemp_table_01.
+          DATA myalv  TYPE REF TO cl_salv_table .
+
+
+          SELECT * FROM zemp_table_01 INTO CORRESPONDING FIELDS OF TABLE it_table.
+
+
+          TRY .
+              cl_salv_table=>factory(
+              IMPORTING
+                r_salv_table = myalv
+              CHANGING
+                t_table      = it_table  ) .
+            CATCH cx_salv_msg .
+          ENDTRY .
+
+          myalv->display( ).
+
+*****
+** Read One Employee
+*****
+        WHEN 'READ1'.
+
+          TRY .
+
+              emp = agent->get_persistent(
+              EXPORTING
+                i_number1 = p_number
+              ).
+
+              IF sy-subrc is INITIAL.
+
+                WRITE:/ 'Number Employee: ', emp->get_number1( ).
+                WRITE:/ 'Name Employee: ', emp->get_name( ).
+                WRITE:/ 'Sector Employee: ', emp->get_sector( ).
+
+              ENDIF.
+
+            CATCH cx_os_object_not_found.
+              write:/ 'Number no exist'.
+          ENDTRY.
+
+*****
+** Update Employee
+*****
+        WHEN 'UPDATE'.
+          TABLES: zemp_table_01.
+          DATA idx TYPE sy-tabix.
+          DATA wa_table TYPE zemp_table_01.
+
+
+          SELECT SINGLE * FROM zemp_table_01 WHERE number1 = p_number.
+
+          IF sy-subrc IS INITIAL.
+            idx = sy-tabix.
+
+            wa_table-number1 = p_number.
+            wa_table-name = p_name.
+            wa_table-sector = p_sector.
+
+            MODIFY zemp_table_01 FROM wa_table.
+
+            IF sy-subrc IS INITIAL.
+
+              WRITE:/ 'Successfully updated value'.
+
+            ENDIF.
+
+          ENDIF.
+
+          WRITE:/ 'Number not found'.
+
+*****
+** Delete Employee
+*****
+        WHEN 'DELETE'.
+
+          TRY  .
+
+            agent->delete_persistent(
+            EXPORTING
+              i_number1 = p_number
+          ).
+
+          IF sy-subrc IS INITIAL.
+            WRITE:/ 'Value successfully removed'.
+          ENDIF.
+
+          CATCH CX_OS_OBJECT_NOT_EXISTING.
+            WRITE:/ 'Number of employee no exist'.
+          ENDTRY.
+
+      ENDCASE.
+
+      COMMIT WORK.
+    CATCH: cx_os_db_insert INTO DATA(v_osdbsearch).
+
+  ENDTRY.
